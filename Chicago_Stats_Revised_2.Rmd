@@ -1,0 +1,371 @@
+---
+title: "CrimStats_Chicago"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install R libraries
+
+```{r}
+
+
+library(lubridate)
+library(readr)
+library(dplyr)
+library(DT)
+library(ggrepel)
+library(leaflet)
+li?rary(ggplot2)
+library(scales)
+
+#if(!require(lubridate)) install.packages("lubridate")
+# if(!require(readr)) install.packages("readr")
+# if(!require(dplyr)) install.packages("dplyr")
+# if(!require(DT)) install.packages("DT")
+# if(!require(ggrepel)) install.?ackages("ggrepel")
+# if(!require(leaflet)) install.packages("leaflet")
+# if(!require(ggplot2)) install.packages("ggplot2")
+# if(!require(scales)) install.packages("scales")
+
+
+```
+
+## Data Preprocessing
+
+Read the data
+Load the data using readr and read_csv(?.
+
+```{r}
+getwd()
+library(readr)
+# path <- "http://spatial.binghamton.edu/projects/crime/data/SF_Crime_2007_2016.csv"
+path <- "./Crimes__2001_to_Present.csv"
+df <- read_csv(path)
+```
+
+
+## Display Data
+Display the data using DT and datatable().
+
+```{r}
+libr?ry(DT)
+
+df$Time <- format(as.POSIXlt(df$Date,format="%m/%d/%Y %I:%M:%S %p"),"%I:%M:%S %p ")
+
+df$Date_Sub <- format(as.POSIXct(df$Date,format="%m/%d/%Y %H:%M:%S"),"%m/%d/%Y")
+
+df_sub <- df[1:100,]  # display the first 100 rows
+
+library(lubridate)
+
+# class(d?_sub$Date)
+# 
+# ss <- as.Date(df_sub$Date)
+
+# df_sub$Time <- format(as.POSIXlt(df_sub$Date,format="%m/%d/%Y %I:%M:%S %p"),"%I:%M:%S %p ")
+# 
+# df_sub$Date_Sub <- format(as.POSIXct(df_sub$Date,format="%m/%d/%Y %H:%M:%S"),"%m/%d/%Y")
+# 
+
+# df_sub$Time <- as.?haracter(df_sub$Time) 
+
+df_sub$Time <- as.character(df_sub$Time) 
+datatable(df_sub, options = list(pageLength = 5,scrollX='400px'))
+
+# colnames(dftest)
+colnames(df)
+
+df <- df %>% select(ncol(df), (ncol(df)-1), everything())
+
+ncol(df)
+```
+
+```{r}
+sprintf("N?mber of Rows in Dataframe: %s", format(nrow(df),big.mark = ","))
+head(df)
+```
+
+## Preprocess Data
+The All-Caps text is difficult to read. Let's force the text in the appropriate columns into proper case.
+
+```{r}
+# str(df)
+proper_case <- function(x) {
+  ret?rn (gsub("\\b([A-Z])([A-Z]+)", "\\U\\1\\L\\2" , x, perl=TRUE))
+}
+
+
+library(stringr)
+names(df) <- str_replace_all(names(df), c(" " = "_" , "," = "" ))
+
+# df_testy = df
+
+str(df)
+
+df$Day <- weekdays(as.Date(df$Date_Sub))
+
+# df <- df %>% select(-day)
+
+
+library?dplyr)
+df <- df %>% mutate(Primary_Type = proper_case(Primary_Type),
+                    Description = proper_case(Description),
+                    Location_Description = proper_case(Location_Description),
+                    Arrest = proper_case(Arrest),?                    Block = proper_case(Block),
+                    Time = as.character(Time))
+
+# class(df_test)
+
+df_sub <- df[1:100,]  # display the first 100 rows
+datatable(df_sub, options = list(pageLength = 5,scrollX='400px'))
+
+
+```
+
+
+## Visualize Data?Crime across space
+Display crime incident locations on the map using leaflet. Click icons on the map to show incident details.
+
+
+```{r}
+library(leaflet)
+
+data <- df[1:10000,] # display the first 10,000 rows
+data$popup <- paste("<b>Case #: </b>", data$Case_?umber, "<br>", "<b>Category: </b>", data$Primary_Type,
+                    "<br>", "<b>Description: </b>", data$Description,
+                    "<br>", "<b>Description: </b>", data$Location_Description,
+                    "<br>", "<b>Day of week: </b>", ?ata$Day,
+                    "<br>", "<b>Date: </b>", data$Date_Sub,
+                    "<br>", "<b>Time: </b>", data$Time,
+                    "<br>", "<b>PD Ward: </b>", data$Ward,
+                    "<br>", "<b>Arrest: </b>", data$Arrest,
+            ?       "<br>", "<b>Address: </b>", data$Block,
+                    "<br>", "<b>Longitude: </b>", data$Longitude,
+                    "<br>", "<b>Latitude: </b>", data$Latitude)
+
+leaflet(data, width = "100%") %>% addTiles() %>%
+  addTiles(group = "OSM (defa?lt)") %>%
+  addProviderTiles(provider = "Esri.WorldStreetMap",group = "World StreetMap") %>%
+  addProviderTiles(provider = "Esri.WorldImagery",group = "World Imagery") %>%
+  # addProviderTiles(provider = "NASAGIBS.ViirsEarthAtNight2012",group = "Nighttime ?magery") %>%
+  addMarkers(lng = ~Longitude, lat = ~Latitude, popup = data$popup, clusterOptions = markerClusterOptions()) %>%
+  addLayersControl(
+    baseGroups = c("OSM (default)","World StreetMap", "World Imagery"),
+    options = layersControlOptions(col?apsed = FALSE)
+  )
+```
+
+## Crime Over Time
+
+```{r}
+df_crime_daily <- df %>%
+    mutate(Date = as.Date(Date_Sub, "%m/%d/%Y")) %>%
+  group_by(Date) %>%
+  summarize(count = n()) %>%
+  arrange(Date)
+
+library(ggplot2)
+library(scales)
+plot <- ggplot(df_crime_dai?y, aes(x = Date, y = count)) +
+  geom_line(color = "#F2CA27", size = 0.1) +
+  geom_smooth(color = "#1A1A1A") +
+  # fte_theme() +
+  scale_x_date(breaks = date_breaks("1 year"), labels = date_format("%Y")) +
+  labs(x = "Date of Crime", y = "Number of Crimes"? title = "Daily Crimes in Chicago from 2001 - 2021")
+plot
+```
+
+
+## Aggregate Data
+Summarize the data by incident category.
+
+
+```{r}
+df_category <- sort(table(df$Primary_Type),decreasing = TRUE)
+df_category <- data.frame(df_category[df_category > 10000])
+co?names(df_category) <- c("Category", "Frequency")
+df_category$Percentage <- df_category$Frequency / sum(df_category$Frequency)
+datatable(df_category, options = list(scrollX='400px'))
+
+```
+
+
+Create a bar plot based on the incident category.
+
+
+```{r}
+library(?gplot2)
+library(ggrepel)
+bp<-ggplot(df_category, aes(x=Category, y=Frequency, fill=Category)) + geom_bar(stat="identity") + 
+  theme(axis.text.x=element_blank()) + geom_text_repel(data=df_category, aes(label=Category))
+bp
+```
+
+
+
+```{r}
+bp<-ggplot(df_catego?y, aes(x="", y=Percentage, fill=Category)) + geom_bar(stat="identity") 
+pie <- bp + coord_polar("y") 
+pie
+```
+
+
+
+```{r}
+install.packages("sf")
+library(sf)
+
+getwd()
+
+chi_neighborhoods <- st_read("./Neighborhoods_2012/Neighborhoods_2012b.shp")
+
+```
+
+```{r}
+p?ot(df$geometry)
+
+st_crs(chi_neighborhoods)
+
+df <- df %>% mutate(geometry = df$Location)
+
+df_sorted <- df %>% arrange(df$Date_Sub)
+
+head(df_sorted)
+
+##Remove Rows with NAs
+
+df_nonas <-  df[complete.cases(df), ]
+
+df_nonas <- df_nonas %>% arrange(df_nonas$Dat?_Sub)
+
+head(df_nonas)
+
+chi_df <- st_as_sf(df_nonas, coords = c("Longitude", "Latitude"), crs = "+proj=longlat +ellps=WGS84 +no_defs")
+
+chi_df <- st_transform(chi_df, crs = st_crs(chi_neighborhoods))
+
+head(chi_df)
+
+crime_agg <- st_join(chi_df, chi_neighborh?ods)
+
+head(crime_agg)
+
+
+```
+
+Aggregate Crimes by area
+```{r}
+
+crime_agg$number_crimes <- 1
+
+head(crime_agg)
+head(crime_agg)
+crime_agg[crime_agg$Primary_Type == "Theft"]
+
+crime_agg_theft <- filter(crime_agg, Primary_Type == "Theft")
+
+
+
+crime_types <- unique?crime_agg$Primary_Type)
+
+#Theft aggregate Chicago
+aggregate_theft <- aggregate(number_crimes ~ PRI_NEIGH, data = crime_agg_theft, FUN = sum)
+
+summary(aggregate_theft$number_crimes)
+
+nrow(aggregate_theft)
+
+nrow(chi_neighborhoods)
+
+```
+
+
+```{r}
+
+#Create freq?ency table for crimes by neighborhood
+crime_agg_category <- table(crime_agg$PRI_NEIGH,crime_agg$Primary_Type)
+
+
+#Convert Table to DF
+crime_agg_category_df <- as.data.frame.matrix(crime_agg_category) 
+
+crime_agg_category_df$PRI_NEIGH = neigh_names
+
+crime_ag?_category_df <- crime_agg_category_df %>% select(ncol(crime_agg_category_df), everything())
+
+rownames(crime_agg_category_df) <-  seq(length=nrow(crime_agg_category_df))
+
+
+#crime_agg_category_year <- table(crime_agg$PRI_NEIGH,crime_agg$Primary_Type, crime_a?g$Year)
+
+
+chi_neighborhoods_crimes <- left_join(chi_neighborhoods, crime_agg_category_df)
+
+head(chi_neighborhoods)
+
+
+crime_agg_category <- data.frame(crime_agg_category[crime_agg_category > 10000])
+colnames(crime_agg_category) <- c("Category", "Frequency")?crime_agg_category$Percentage <- crime_agg_category$Frequency / sum(crime_agg_category$Frequency)
+datatable(crime_agg_category, options = list(scrollX='400px'))
+```
+
+## Making choropleth maps
+Finally we are ready to make some choropleth maps.
+
+For these ma?s we are going to use ggplot2 again so we need to load it.
+
+
+```{r}
+library(ggplot2)
+ggplot(chi_neighborhoods_crimes, aes(fill = chi_neighborhoods_crimes$Arson)) +
+  geom_sf() +  scale_fill_gradient(low = "white", high = "red") + 
+  labs(fill = "# of arson?",
+       title = "Arsons in Chicago, by neighborhood",
+       subtitle = "2001 - 2021")  +  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())
+
+```
+
+```{r}
+
+getwd()
+save(chi_neighborhoods_crim?s, file = "../chi_neighborhoods_crimes.rda")
+
+```
+
+
+
+## Interactive Maps
+
+
+```{r}
+
+## Transform Data to right projection since leaflet expects standard CRS, WGS84 using long and lat -- projected means no long lat
+chi_neighborhoods_crimes <- st_transform(ch?_neighborhoods_crimes,
+                                        crs = "+proj=longlat +datum=WGS84")
+
+pal <- colorNumeric("OrRd", chi_neighborhoods_crimes$`Human Trafficking`)
+
+leaflet()  %>% 
+  addTiles('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', 
+?          attribution = '&copy; <a href="http://openstreetmap.org">
+                OpenStreetMap</a> contributors') %>%
+   addPolygons(data = chi_neighborhoods_crimes$geometry,
+              color = "black",
+              weight = 1,
+               popup ? paste0("Neighborhood: ", chi_neighborhoods_crimes$PRI_NEIGH,
+                             "<br>",
+                             "Number of Humans Trafficked: ", chi_neighborhoods_crimes$`Human Trafficking`),fillColor = pal(chi_neighborhoods_crimes$`Human T?afficking`),
+              fillOpacity = .75) %>%  addLegend(pal = pal, 
+            values = chi_neighborhoods_crimes$`Human Trafficking`,
+            opacity = 1, 
+            title = "Number of Humans Trafficked")
+
+
+
+```
+
